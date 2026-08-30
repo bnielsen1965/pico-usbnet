@@ -170,6 +170,8 @@ See the [`example/`](example/) directory: a minimal firmware at 192.168.7.1
 with DHCP (192.168.7.2-.4) and DNS (`pico-usbnet`), verified with `ping` and
 `nslookup` on a Linux host.
 
+Resource usage (example, `arm-none-eabi-size`): ~65 KB text, ~40 KB bss.
+
 ## License
 
 See [LICENSE](LICENSE).
