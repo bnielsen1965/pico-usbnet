@@ -24,6 +24,18 @@ static struct netif g_netif;
 // in-flight RX pbuf (renewed after each frame)
 static struct pbuf *g_received_frame;
 
+// Diagnostic counters, exposed via usbnet_get_stats(). They let us tell, from
+// the serial console, which layer a network stall is in:
+//   rx_frames flat + tx_frames flat  -> not receiving (NCM OUT endpoint not
+//                                       armed / NTB desync)
+//   rx_frames rising + tx_frames flat-> receiving but not replying (lwIP/ARP)
+//   rx_frames rising + tx_drops rising-> replying but host not reading NCM IN
+//   rx_nobuf rising                   -> PBUF_POOL exhausted
+static volatile uint32_t g_stats_rx_frames = 0; // frames stored for lwIP
+static volatile uint32_t g_stats_rx_nobuf  = 0; // recv pbuf_alloc failed
+static volatile uint32_t g_stats_tx_frames = 0; // frames handed to NCM TX
+static volatile uint32_t g_stats_tx_drops  = 0; // linkoutput gave up on NCM TX
+
 // Module state
 static bool g_initialized = false;
 static ip4_addr_t g_ipaddr;
@@ -62,6 +74,7 @@ static err_t linkoutput_fn(struct netif *netif, struct pbuf *p) {
         tud_task();
     }
 
+    g_stats_tx_drops++;
     return ERR_IF;
 }
 
@@ -151,6 +164,9 @@ bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
         if (p) {
             memcpy(p->payload, src, size);
             g_received_frame = p;
+            g_stats_rx_frames++;
+        } else {
+            g_stats_rx_nobuf++;
         }
     }
 
@@ -162,7 +178,9 @@ bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
 uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
     struct pbuf *p = (struct pbuf *) ref;
     (void) arg;
-    return pbuf_copy_partial(p, dst, p->tot_len, 0);
+    uint16_t n = pbuf_copy_partial(p, dst, p->tot_len, 0);
+    g_stats_tx_frames++;
+    return n;
 }
 
 // Free a pending RX frame on USB re-enumeration
@@ -272,4 +290,12 @@ struct netif *usbnet_netif(void) {
 
 bool usbnet_is_up(void) {
     return g_initialized && netif_is_up(&g_netif) && tud_ready();
+}
+
+void usbnet_get_stats(uint32_t *rx_frames, uint32_t *rx_nobuf,
+                      uint32_t *tx_frames, uint32_t *tx_drops) {
+    if (rx_frames) *rx_frames = g_stats_rx_frames;
+    if (rx_nobuf)  *rx_nobuf  = g_stats_rx_nobuf;
+    if (tx_frames) *tx_frames = g_stats_tx_frames;
+    if (tx_drops)  *tx_drops  = g_stats_tx_drops;
 }

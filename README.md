@@ -124,6 +124,15 @@ bool usbnet_is_up(void);
 True once the netif is up and the USB link is configured (the host has
 enumerated the device).
 
+```c
+void usbnet_get_stats(uint32_t *rx_frames, uint32_t *rx_nobuf,
+                      uint32_t *tx_frames, uint32_t *tx_drops);
+```
+
+Read the four frame/drop counters (see **Diagnostics**). Any argument may be
+`NULL` to skip. The counters are cumulative since boot and safe to read from
+any task (32-bit aligned reads).
+
 ### `usbnet_config_t`
 
 | Field | Meaning |
@@ -141,6 +150,32 @@ enumerated the device).
 
 Use `USBNET_INIT_IP4(a, b, c, d)` to fill the `ip4_addr_t` fields in a struct literal.
 
+## Diagnostics
+
+`usbnet_get_stats()` exposes four cumulative frame counters (since boot) that
+let you tell, without a debugger, which layer a network stall is in. Because
+they are cumulative, read them twice and compare the deltas — a console command
+in a separate task is a fine reader.
+
+| Counter | Bumped when |
+|---|---|
+| `rx_frames` | a host→device NCM frame is copied into a pool pbuf (accepted into the RX buffer) |
+| `rx_nobuf` | `pbuf_alloc(PBUF_POOL)` failed for an incoming frame — the pbuf pool is exhausted and the frame is dropped |
+| `tx_frames` | a device→host frame is copied out to the NCM IN endpoint |
+| `tx_drops` | the bounded NCM TX wait (`USBNET_XMIT_TIMEOUT_MS`) expired — the host was not reading the NCM IN endpoint, so the frame is dropped |
+
+Reading the deltas:
+
+| Pattern | Diagnosis |
+|---|---|
+| `rx_frames` flat + `tx_frames` flat | not receiving — NCM OUT endpoint not armed / NTB desync |
+| `rx_frames` rising + `tx_frames` flat | receiving but not replying — lwIP/ARP layer |
+| `rx_frames` rising + `tx_drops` rising | replying but the host is not reading NCM IN — TX/host side |
+| `rx_nobuf` rising | pbuf pool exhaustion (memory pressure) |
+
+A healthy link shows `rx_nobuf = 0` and a flat `tx_drops`; under traffic,
+`rx_frames` and `tx_frames` track each other (plus protocol overhead).
+
 ## Overridable Defaults
 
 Every TinyUSB and lwIP option in `src/include/tusb_config.h` /
@@ -151,6 +186,7 @@ options:
 | Macro | Default | Meaning |
 |---|---|---|
 | `USBNET_INIT_TIMEOUT_MS` | 2000 | Bounded init wait per step |
+| `USBNET_XMIT_TIMEOUT_MS` | 10 | Bounded NCM TX wait in `linkoutput`; frames drop after (see Diagnostics) |
 | `USBNET_MAX_DHCP_ENTRIES` | 8 | Max DHCP lease table size |
 | `USBNET_DHCP_DOMAIN_DEFAULT` | `"pico-usbnet"` | Default DHCP domain |
 | `USBNET_USB_VID` | `0xCafe` | USB vendor ID |

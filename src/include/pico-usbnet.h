@@ -71,6 +71,11 @@ struct netif *usbnet_netif(void);
 // host has enumerated the device)
 bool usbnet_is_up(void);
 
+// Diagnostic frame/drop counters (see usbnet.c). Any out parameter may be
+// NULL. Safe to call from any task (32-bit aligned reads).
+void usbnet_get_stats(uint32_t *rx_frames, uint32_t *rx_nobuf,
+                      uint32_t *tx_frames, uint32_t *tx_drops);
+
 #ifdef __cplusplus
 }
 #endif
