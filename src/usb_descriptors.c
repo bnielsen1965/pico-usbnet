@@ -32,7 +32,7 @@ enum
 enum
 {
   ITF_NUM_NET = 0,
-  ITF_NUM_TOTAL
+  ITF_NUM_TOTAL = 2
 };
 
 enum
@@ -70,6 +70,7 @@ tusb_desc_device_t const desc_device =
     .bNumConfigurations = CONFIG_ID_COUNT
 };
 
+// Return the USB device descriptor to the host during enumeration
 uint8_t const * tud_descriptor_device_cb(void)
 {
   return (uint8_t const *) &desc_device;
@@ -95,6 +96,8 @@ static uint8_t const * const configuration_arr[1] =
   [CONFIG_ID_NCM] = ncm_configuration
 };
 
+// Return the requested USB configuration descriptor (or NULL if the index is
+// out of range)
 uint8_t const * tud_descriptor_configuration_cb(uint8_t index)
 {
   return (index < CONFIG_ID_COUNT) ? configuration_arr[index] : NULL;
@@ -117,6 +120,8 @@ uint8_t const desc_bos[] =
   TUD_BOS_MS_OS_20_DESCRIPTOR(MS_OS_20_DESC_LEN, 1)
 };
 
+// Return the Binary Object Store descriptor (used by Windows to auto-load the
+// NCM driver)
 uint8_t const * tud_descriptor_bos_cb(void)
 {
   return desc_bos;
@@ -198,6 +203,8 @@ static char const* string_desc_arr [] =
 
 static uint16_t _desc_str[32 + 1];
 
+// Build and return the requested USB string descriptor (language ID, serial
+// number from the board unique ID, MAC address, or one of the static strings)
 uint16_t const* tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
   (void) langid;
   unsigned int chr_count = 0;

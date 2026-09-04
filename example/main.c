@@ -9,6 +9,8 @@ static dhcp_entry_t g_dhcp_entries[] = {
     {{0}, USBNET_INIT_IP4(192, 168, 7, 4), 24 * 60 * 60},
 };
 
+// Example: bring up USB Ethernet (with DHCP and DNS) and pump the stack in a
+// superloop while blinking the board LED
 int main(void) {
     stdio_init_all();
 

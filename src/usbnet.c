@@ -38,33 +38,47 @@ static dns_query_proc_t g_dns_query;
 static dhcp_entry_t g_dhcp_entries[USBNET_MAX_DHCP_ENTRIES];
 static dhcp_config_t g_dhcp_config;
 
-// lwIP netif driver: send packet over USB
+// lwIP netif driver: send packet over USB.
+//
+// The wait for the NCM TX to drain is bounded. If the host stops reading the
+// NCM pipe (USB suspend/resume, bus reset, host driver hiccup),
+// tud_network_can_xmit() stays false while tud_ready() stays true. Spinning
+// on that forever would wedge the usbnet task inside service_traffic() - it
+// would never return to usbnet_service(), never renew the RX pbuf, and the
+// whole network (ARP/DHCP/IP) would die while the task still reads "running".
+// Dropping instead keeps the service loop alive; the peer retries (ARP does).
 static err_t linkoutput_fn(struct netif *netif, struct pbuf *p) {
     (void) netif;
 
-    for (;;) {
-        if (!tud_ready())
-            return ERR_USE;
+    if (!tud_ready())
+        return ERR_USE;
 
+    absolute_time_t deadline = make_timeout_time_ms(USBNET_XMIT_TIMEOUT_MS);
+    while (!time_reached(deadline)) {
         if (tud_network_can_xmit(p->tot_len)) {
             tud_network_xmit(p, 0);
             return ERR_OK;
         }
-
         tud_task();
     }
+
+    return ERR_IF;
 }
 
+// lwIP IPv4 output hook: resolve the destination and transmit the frame via
+// ARP (etharp)
 static err_t ip4_output_fn(struct netif *netif, struct pbuf *p, const ip4_addr_t *addr) {
     return etharp_output(netif, p, addr);
 }
 
 #if LWIP_IPV6
+// lwIP IPv6 output hook: transmit the frame via ethip6
 static err_t ip6_output_fn(struct netif *netif, struct pbuf *p, const ip6_addr_t *addr) {
     return ethip6_output(netif, p, addr);
 }
 #endif
 
+// lwIP netif init callback: set the MTU, flags and per-family output hooks
 static err_t netif_init_cb(struct netif *netif) {
     LWIP_ASSERT("netif != NULL", (netif != NULL));
     netif->mtu = CFG_TUD_NET_MTU;
@@ -80,6 +94,8 @@ static err_t netif_init_cb(struct netif *netif) {
     return ERR_OK;
 }
 
+// Bring up lwIP: initialize the stack, bind the netif to the USB MAC, add it
+// with the configured addresses and mark it as the default route
 static void init_lwip(void) {
     struct netif *netif = &g_netif;
 
@@ -123,6 +139,10 @@ static bool dns_query_proc(const char *name, ip4_addr_t *addr) {
 }
 
 // TinyUSB network callbacks
+
+// Host-to-device frame received: copy it into a pool pbuf held as
+// g_received_frame until service_traffic() feeds it to lwIP. Returns true if
+// the buffer was accepted (or there was no data), false to make TinyUSB retry
 bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
     if (g_received_frame) return false;
 
@@ -137,6 +157,8 @@ bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
     return true;
 }
 
+// Device-to-host frame to transmit: copy the pbuf pointed to by ref into dst
+// and return the number of bytes written
 uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
     struct pbuf *p = (struct pbuf *) ref;
     (void) arg;

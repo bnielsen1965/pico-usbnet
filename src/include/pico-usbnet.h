@@ -26,6 +26,13 @@ extern "C" {
 #define USBNET_INIT_TIMEOUT_MS 2000
 #endif
 
+// How long the netif linkoutput waits (ms) for the NCM TX to drain before
+// dropping the packet. Bounded on purpose: an unbounded spin here would wedge
+// the whole usbnet_service() loop and silently kill RX (see linkoutput_fn).
+#ifndef USBNET_XMIT_TIMEOUT_MS
+#define USBNET_XMIT_TIMEOUT_MS 10
+#endif
+
 // DHCP domain advertised to clients when usbnet_config_t.dhcp_domain is NULL
 #ifndef USBNET_DHCP_DOMAIN_DEFAULT
 #define USBNET_DHCP_DOMAIN_DEFAULT "pico-usbnet"
