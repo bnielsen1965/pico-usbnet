@@ -18,9 +18,21 @@ gadget**: TinyUSB CDC-NCM + lwIP netif + optional DHCP/DNS servers.
 ## Requirements
 
 - Raspberry Pi Pico (or compatible RP2040 board)
-- Pico SDK installed and `PICO_SDK_PATH` set (tested with 2.3.0)
+- Pico SDK installed and `PICO_SDK_PATH` set (tested with 2.3.1)
+- **TinyUSB submodule updated to 0.21.0** (Pico SDK 2.3.1 ships 0.18.0; see below)
 - CMake 3.12+
 - ARM GCC toolchain (via Pico SDK)
+
+### TinyUSB Submodule Update
+
+Pico SDK 2.3.1 pins TinyUSB at 0.18.0. For reliable Windows 10/11 CDC-NCM
+support you must update it to 0.21.0:
+
+```bash
+cd $PICO_SDK_PATH/lib/tinyusb
+git fetch origin --tags
+git checkout 0.21.0
+```
 
 ## Usage in Your CMake Project
 
@@ -206,36 +218,16 @@ header in a consuming project.
 CDC-NCM on Windows 10+ uses the built-in `UsbNcm.sys` driver (no manual install
 needed — the MS OS 2.0 descriptor with compatible ID `WINNCM` triggers auto-loading).
 
-Several quirks were encountered and fixed to make DHCP work reliably on Windows 10:
+TinyUSB 0.21.0 includes all the NCM and DHCP fixes needed for reliable Windows 10
+operation (notification ordering, ZLP handling, class request ACKs, DHCP broadcast
+flag, option ordering, payload padding). No patches are required.
+
+pico-usbnet additionally handles one quirk at the application level:
 
 - **Distinct internal MAC** — The USB descriptor MAC becomes the host's
   interface MAC. The lwIP netif uses a derived MAC (last octet + 1) so that
   DHCP OFFER/ACK frames have a source MAC different from the host's own MAC.
   Without this, Windows silently rejects the DHCP reply.
-
-- **DHCP broadcast flag** — `dp_flags` must be `htons(0x8000)` so the OFFER/ACK
-  is sent as an Ethernet broadcast (the host has no IP yet to unicast to).
-
-- **DHCP option order** — Windows expects: msg-type (53), server-id (54),
-  subnet (1), router (3), lease (51), DNS (6), domain (15), end (255).
-
-- **DHCP router option always emitted** — Even if the gateway is the same as
-  the server IP, the router option must be present.
-
-- **DHCP payload padding** — OFFER/ACK are padded to ≥ 330 bytes. Windows
-  `UsbNcm.sys` drops shorter DHCP payloads over NCM.
-
-- **NCM notification order** — `NETWORK_CONNECTION` must be sent before
-  `CONNECTION_SPEED_CHANGE`, or Windows will not activate the data interface.
-
-- **NCM ZLP handling** — A zero-length bulk OUT is never a valid NTB; it is
-  discarded. If an IN transfer length is an exact multiple of the endpoint size
-  (64 bytes on FS), one zero byte is appended so the last USB packet is short
-  (Windows fails to terminate otherwise).
-
-- **NCM class requests ACKed** — All optional NCM SET requests (multicast
-  filter, packet filter, NTB format/size, CRC mode) are ACKed rather than
-  STALLed. Windows tears down the adapter on a STALL.
 
 ## Example
 
