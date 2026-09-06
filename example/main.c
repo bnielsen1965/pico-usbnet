@@ -17,7 +17,7 @@ int main(void) {
     usbnet_config_t cfg = {
         .ip = USBNET_INIT_IP4(192, 168, 7, 1),
         .netmask = USBNET_INIT_IP4(255, 255, 255, 0),
-        .gateway = USBNET_INIT_IP4(0, 0, 0, 0),
+        .gateway = USBNET_INIT_IP4(192, 168, 7, 1),
         .mac = NULL,
         .dns_name = "pico-usbnet",
         .dns_query = NULL,

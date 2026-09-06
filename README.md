@@ -5,12 +5,13 @@ gadget**: TinyUSB CDC-NCM + lwIP netif + optional DHCP/DNS servers.
 
 ## Features
 
-- CDC-NCM USB Ethernet (cross-platform: Linux, macOS, Windows via MS OS 2.0 descriptor)
+- CDC-NCM USB Ethernet (cross-platform: Linux, macOS, Windows 10/11 via MS OS 2.0 descriptor)
 - lwIP `NO_SYS` stack compiled into the library — one `usbnet_service()` call pumps everything
 - OS-agnostic core: call `usbnet_service()` from a superloop or wrap it in a FreeRTOS task
 - Built-in DHCP server (TinyUSB dhserver) with a configurable lease table
 - Built-in DNS server (TinyUSB dnserver) resolving a configurable name, plus an optional consumer callback
 - MAC address derived from the board unique ID by default (locally-administered, unicast), or consumer-supplied
+- Internally distinct lwIP netif MAC (USB descriptor MAC + 1) so the host doesn't reject DHCP frames where source and destination MAC match
 - All TinyUSB / lwIP defaults overridable via `#ifndef` (see `src/include/tusb_config.h` and `src/include/lwipopts.h`)
 - Drop-in integration via CMake `add_subdirectory()` (also works as a git submodule)
 
@@ -57,7 +58,7 @@ int main(void) {
     usbnet_config_t cfg = {
         .ip = USBNET_INIT_IP4(192, 168, 7, 1),
         .netmask = USBNET_INIT_IP4(255, 255, 255, 0),
-        .gateway = USBNET_INIT_IP4(0, 0, 0, 0),
+        .gateway = USBNET_INIT_IP4(192, 168, 7, 1), // self: Pico is the gateway
         .mac = NULL,                        // NULL = derive from board unique ID
         .dns_name = "pico-usbnet",          // NULL = no DNS server
         .dns_query = NULL,                  // optional extra resolver
@@ -139,7 +140,7 @@ any task (32-bit aligned reads).
 |---|---|
 | `ip` | Device address, e.g. 192.168.7.1 |
 | `netmask` | e.g. 255.255.255.0 |
-| `gateway` | 0.0.0.0 = no gateway |
+| `gateway` | 0.0.0.0 = no gateway; for DHCP use the device's own IP (the Pico is the router for the host) |
 | `mac` | 6-byte MAC address; NULL = derive from board unique ID (locally-administered, unicast) |
 | `dns_name` | Name to resolve to `ip` (also `<name>.<dhcp_domain>`); NULL = no DNS server |
 | `dns_query` | Optional extra resolver for other names (NULL = none) |
@@ -200,11 +201,47 @@ Note: the module's `tusb_config.h` and `lwipopts.h` are found first (they are
 in the library's public include path). Do not define your own copies of either
 header in a consuming project.
 
+## Windows 10/11 Compatibility
+
+CDC-NCM on Windows 10+ uses the built-in `UsbNcm.sys` driver (no manual install
+needed — the MS OS 2.0 descriptor with compatible ID `WINNCM` triggers auto-loading).
+
+Several quirks were encountered and fixed to make DHCP work reliably on Windows 10:
+
+- **Distinct internal MAC** — The USB descriptor MAC becomes the host's
+  interface MAC. The lwIP netif uses a derived MAC (last octet + 1) so that
+  DHCP OFFER/ACK frames have a source MAC different from the host's own MAC.
+  Without this, Windows silently rejects the DHCP reply.
+
+- **DHCP broadcast flag** — `dp_flags` must be `htons(0x8000)` so the OFFER/ACK
+  is sent as an Ethernet broadcast (the host has no IP yet to unicast to).
+
+- **DHCP option order** — Windows expects: msg-type (53), server-id (54),
+  subnet (1), router (3), lease (51), DNS (6), domain (15), end (255).
+
+- **DHCP router option always emitted** — Even if the gateway is the same as
+  the server IP, the router option must be present.
+
+- **DHCP payload padding** — OFFER/ACK are padded to ≥ 330 bytes. Windows
+  `UsbNcm.sys` drops shorter DHCP payloads over NCM.
+
+- **NCM notification order** — `NETWORK_CONNECTION` must be sent before
+  `CONNECTION_SPEED_CHANGE`, or Windows will not activate the data interface.
+
+- **NCM ZLP handling** — A zero-length bulk OUT is never a valid NTB; it is
+  discarded. If an IN transfer length is an exact multiple of the endpoint size
+  (64 bytes on FS), one zero byte is appended so the last USB packet is short
+  (Windows fails to terminate otherwise).
+
+- **NCM class requests ACKed** — All optional NCM SET requests (multicast
+  filter, packet filter, NTB format/size, CRC mode) are ACKed rather than
+  STALLed. Windows tears down the adapter on a STALL.
+
 ## Example
 
 See the [`example/`](example/) directory: a minimal firmware at 192.168.7.1
 with DHCP (192.168.7.2-.4) and DNS (`pico-usbnet`), verified with `ping` and
-`nslookup` on a Linux host.
+`nslookup` on Linux and DHCP on Windows 10.
 
 Resource usage (example, `arm-none-eabi-size`): ~65 KB text, ~40 KB bss.
 

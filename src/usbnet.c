@@ -107,17 +107,20 @@ static err_t netif_init_cb(struct netif *netif) {
     return ERR_OK;
 }
 
-// Bring up lwIP: initialize the stack, bind the netif to the USB MAC, add it
-// with the configured addresses and mark it as the default route
+// Bring up lwIP: initialize the stack, bind the netif to an internal MAC
+// (distinct from the USB descriptor MAC which the host uses as its own),
+// add it with the configured addresses and mark it as the default route
 static void init_lwip(void) {
     struct netif *netif = &g_netif;
 
     lwip_init();
 
-    netif->hwaddr_len = sizeof(tud_network_mac_address);
-    memcpy(netif->hwaddr, tud_network_mac_address, sizeof(tud_network_mac_address));
-    // The netif MAC must match the MAC advertised in the USB NCM descriptor;
-    // do not flip any bits here.
+    // The USB descriptor MAC becomes the host's interface MAC. Our lwIP netif
+    // MAC must differ so the host doesn't reject frames where src==dst MAC.
+    // Derive by incrementing the last octet (stays locally-administered).
+    netif->hwaddr_len = 6;
+    memcpy(netif->hwaddr, tud_network_mac_address, 6);
+    netif->hwaddr[5] += 1;
 
     netif_add(netif, &g_ipaddr, &g_netmask, &g_gateway, NULL, netif_init_cb, ip_input);
 #if LWIP_IPV6
