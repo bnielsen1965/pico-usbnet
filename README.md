@@ -70,7 +70,7 @@ int main(void) {
     usbnet_config_t cfg = {
         .ip = USBNET_INIT_IP4(192, 168, 7, 1),
         .netmask = USBNET_INIT_IP4(255, 255, 255, 0),
-        .gateway = USBNET_INIT_IP4(192, 168, 7, 1), // self: Pico is the gateway
+        .gateway = USBNET_INIT_IP4(0, 0, 0, 0), // no gateway: the Pico is an end device, not a router
         .mac = NULL,                        // NULL = derive from board unique ID
         .dns_name = "pico-usbnet",          // NULL = no DNS server
         .dns_query = NULL,                  // optional extra resolver
@@ -152,7 +152,7 @@ any task (32-bit aligned reads).
 |---|---|
 | `ip` | Device address, e.g. 192.168.7.1 |
 | `netmask` | e.g. 255.255.255.0 |
-| `gateway` | 0.0.0.0 = no gateway; for DHCP use the device's own IP (the Pico is the router for the host) |
+| `gateway` | Advertised to the host as the DHCP router (opt 3). `0.0.0.0` = no gateway (recommended). The Pico is an end device, not a router — do **not** set it to the device's own IP |
 | `mac` | 6-byte MAC address; NULL = derive from board unique ID (locally-administered, unicast) |
 | `dns_name` | Name to resolve to `ip` (also `<name>.<dhcp_domain>`); NULL = no DNS server |
 | `dns_query` | Optional extra resolver for other names (NULL = none) |
