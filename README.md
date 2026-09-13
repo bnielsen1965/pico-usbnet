@@ -206,6 +206,7 @@ options:
 | `USBNET_USB_MANUFACTURER` | `"Pico USBNET"` | USB manufacturer string |
 | `USBNET_USB_PRODUCT` | `"Pico USB Ethernet"` | USB product string |
 | `USBNET_USB_INTERFACE` | `"USB Network Interface"` | USB interface string |
+| `CFG_TUD_NCM_IN_NTB_N` | 3 | TX NTB buffers; 1 causes indefinite TX stall if a transfer is NAKed |
 
 The USB serial number is always the RP2040 board unique ID.
 

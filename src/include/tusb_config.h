@@ -69,6 +69,13 @@ extern "C" {
 #define CFG_TUD_NCM 1
 #endif
 
+// Use 3 TX NTB buffers so a single stuck in-flight transfer does not halt
+// all NCM TX (with 1 buffer, a NAKed/stuck transfer blocks tud_network_can_xmit
+// indefinitely and every subsequent frame is dropped until the watchdog resets).
+#ifndef CFG_TUD_NCM_IN_NTB_N
+#define CFG_TUD_NCM_IN_NTB_N 3
+#endif
+
 #ifdef __cplusplus
 }
 #endif
