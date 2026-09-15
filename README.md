@@ -19,21 +19,27 @@ gadget**: TinyUSB CDC-NCM + lwIP netif + optional DHCP/DNS servers.
 
 - Raspberry Pi Pico (or compatible RP2040 board)
 - Pico SDK installed and `PICO_SDK_PATH` set (tested with 2.3.1)
-- **TinyUSB submodule updated to 0.21.0** (Pico SDK 2.3.1 ships 0.18.0; see below)
+- **TinyUSB 0.21.0** — fetched automatically at build time by `pico_usbnet_tinyusb.cmake` (Pico SDK 2.3.1 ships 0.18.0; see below)
 - CMake 3.12+
 - ARM GCC toolchain (via Pico SDK)
 
-### TinyUSB Submodule Update
+### TinyUSB 0.21.0 (fetched automatically)
 
 Pico SDK 2.3.1 pins TinyUSB at 0.18.0. For reliable Windows 10/11 CDC-NCM
-support you must update it to 0.21.0:
+support you need 0.21.0. Rather than hand-updating the SDK's submodule, include
+`pico_usbnet_tinyusb.cmake` before `pico_sdk_init()` (see below); it clones
+TinyUSB 0.21.0 into the build tree once and points the SDK at it.
+
+If you already set `PICO_TINYUSB_PATH` (or want to build offline / air-gapped),
+the helper uses your copy as-is and fetches nothing. To build against the SDK's
+own submodule instead, update it manually and set `PICO_TINYUSB_PATH` to it:
 
  ```bash
  cd $PICO_SDK_PATH/lib/tinyusb
  git fetch origin --tags
  git checkout 0.21.0
  ```
-
+ 
  ### Automatic TinyUSB Patch (RP2040 E15 ZLP deadlock)
 
  TinyUSB 0.21.0 still has an RP2040 Errata-15 bug that can permanently stall a
@@ -57,10 +63,13 @@ support you must update it to 0.21.0:
 
 ### 1. Include the library
 
-Add the library as a subdirectory in your `CMakeLists.txt` (after `pico_sdk_init()`):
+Fetch TinyUSB 0.21.0 (or use an existing `PICO_TINYUSB_PATH`) **before**
+`pico_sdk_init()`, then add the library as a subdirectory **after** it:
 
 ```cmake
-add_subdirectory(/path/to/pico-usbnet build_usbnet)
+include(/path/to/pico-usbnet/pico_usbnet_tinyusb.cmake)  # before pico_sdk_init()
+pico_sdk_init()
+add_subdirectory(/path/to/pico-usbnet build_usbnet)       # after pico_sdk_init()
 ```
 
 ### 2. Link your target

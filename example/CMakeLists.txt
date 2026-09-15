@@ -8,6 +8,10 @@ project(example)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+# Fetch TinyUSB 0.21.0 (or use an existing PICO_TINYUSB_PATH). Must run before
+# pico_sdk_init() so the SDK builds against it.
+include(${CMAKE_CURRENT_LIST_DIR}/../pico_usbnet_tinyusb.cmake)
+
 pico_sdk_init()
 
 add_subdirectory(.. build)
