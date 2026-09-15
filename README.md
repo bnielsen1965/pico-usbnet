@@ -28,13 +28,32 @@ gadget**: TinyUSB CDC-NCM + lwIP netif + optional DHCP/DNS servers.
 Pico SDK 2.3.1 pins TinyUSB at 0.18.0. For reliable Windows 10/11 CDC-NCM
 support you must update it to 0.21.0:
 
-```bash
-cd $PICO_SDK_PATH/lib/tinyusb
-git fetch origin --tags
-git checkout 0.21.0
-```
+ ```bash
+ cd $PICO_SDK_PATH/lib/tinyusb
+ git fetch origin --tags
+ git checkout 0.21.0
+ ```
 
-## Usage in Your CMake Project
+ ### Automatic TinyUSB Patch (RP2040 E15 ZLP deadlock)
+
+ TinyUSB 0.21.0 still has an RP2040 Errata-15 bug that can permanently stall a
+ Bulk-IN endpoint: a Zero-Length Packet deferred by the E15 workaround is
+ re-armed on the next SOF without resetting the buffer select, so after an
+ even-packet double-buffered transfer (e.g. a 1280-byte NCM data NTB) the ZLP
+ lands in the unselected buffer and the endpoint NAKs forever.
+
+ pico-usbnet ships a local patch for this and applies it to the TinyUSB you build
+ against (`$PICO_TINYUSB_PATH`) automatically at CMake configure time — so you do
+ **not** need to patch the submodule by hand, and it survives `git submodule update`.
+ See `patches/tinyusb-rp2040-e15-zlp.patch`.
+
+ Once the fix is merged upstream into your TinyUSB version, disable it with:
+
+ ```bash
+ cmake -DPICO_USBNET_TINYUSB_PATCHES=OFF ...
+ ```
+
+ ## Usage in Your CMake Project
 
 ### 1. Include the library
 
