@@ -132,6 +132,38 @@ void network_task(void *arg) {
 }
 ```
 
+## Multi-core (SMP) builds
+
+If you build FreeRTOS for **more than one core** (`configNUMBER_OF_CORES > 1`),
+pin the task that calls `usbnet_service()` — the same task that called
+`usbnet_init()` — to a **single core**.
+
+**Why.** TinyUSB's RP2040 DCD keeps per-endpoint state that is updated from two
+contexts — your `usbnet_service()` "worker" and the USB interrupt handler — using
+non-atomic read-modify-write. The guard around it, `hw_endpoint_lock_update()`, is
+a **no-op** in TinyUSB (it carries an open upstream TODO to make it a real
+critical section and notes the worker and IRQ would "make sense … on same core").
+On one core this is safe (the IRQ only preempts your task). On SMP, if your task
+migrates to a core other than the one that owns the USB interrupt, the two
+contexts run truly concurrently with no lock and can tear the endpoint state.
+`usbnet_init()` calls `tusb_init()`, which binds the USB interrupt to the core it
+runs on — so the core that calls `usbnet_init()` is the one that "owns" USB, and
+the `usbnet_service()` task must stay on it. Getting this wrong shows up as an
+**intermittent NCM IN (TX) wedge after hours of traffic** that only a USB bus
+reset clears.
+
+**Fix.** Create the net task with a fixed core affinity (requires
+`configUSE_CORE_AFFINITY 1`; the affinity argument is a **bitmask** of cores).
+Pinned to core 0:
+
+```c
+xTaskCreateAffinitySet(network_task, "usbnet", 1024, NULL, 5,
+                       (UBaseType_t)(1u << 0) /* core 0 only */, NULL);
+```
+
+Leave any other tasks (e.g. a display/LED task) unpinned — they never touch the
+USB stack. Single-core builds are not affected.
+
 ## API Reference
 
 All in `src/include/pico-usbnet.h`.
